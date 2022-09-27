@@ -27,11 +27,13 @@ type IHeimdallClient interface {
 	Fetch(path string, query string) (*ResponseWithHeight, error)
 	FetchWithRetry(path string, query string) (*ResponseWithHeight, error)
 	FetchStateSyncEvents(fromID uint64, to int64) ([]*EventRecordWithTime, error)
+	Close()
 }
 
 type HeimdallClient struct {
 	urlString string
 	client    http.Client
+	closeCh   chan struct{}
 }
 
 func NewHeimdallClient(urlString string) (*HeimdallClient, error) {
@@ -40,6 +42,7 @@ func NewHeimdallClient(urlString string) (*HeimdallClient, error) {
 		client: http.Client{
 			Timeout: time.Duration(5 * time.Second),
 		},
+		closeCh: make(chan struct{}),
 	}
 	return h, nil
 }
@@ -96,13 +99,29 @@ func (h *HeimdallClient) FetchWithRetry(rawPath string, rawQuery string) (*Respo
 	u.Path = rawPath
 	u.RawQuery = rawQuery
 
+	attempt := 1
+	res, err := h.internalFetch(u)
+	if err == nil && res != nil {
+		return res, nil
+	}
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
 	for {
-		res, err := h.internalFetch(u)
-		if err == nil && res != nil {
-			return res, nil
+		log.Info("Retrying again in 5 seconds to fetch data from Heimdall", "path", u.Path, "attempt", attempt)
+		attempt++
+		select {
+		case <-h.closeCh:
+			log.Info("Shutdown detected, terminating request")
+			return nil, errShutdownDetected
+
+		case <-ticker.C:
+			res, err := h.internalFetch(u)
+			if err == nil && res != nil {
+				return res, nil
+			}
 		}
-		log.Info("Retrying again in 5 seconds for next Heimdall span", "path", u.Path)
-		time.Sleep(5 * time.Second)
 	}
 }
 
@@ -136,4 +155,9 @@ func (h *HeimdallClient) internalFetch(u *url.URL) (*ResponseWithHeight, error) 
 	}
 
 	return &response, nil
+}
+
+func (h *HeimdallClient) Close() {
+	close(h.closeCh)
+	h.client.CloseIdleConnections()
 }

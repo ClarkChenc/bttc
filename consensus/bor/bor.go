@@ -118,6 +118,12 @@ var (
 	// errOutOfRangeChain is returned if an authorization list is attempted to
 	// be modified via out-of-range or non-contiguous headers.
 	errOutOfRangeChain = errors.New("out of range or non-contiguous chain")
+
+	// errShutdownDetected is returned if a shutdown signal is detected
+	errShutdownDetected = errors.New("shutdown detected")
+
+	// errFetchHeimdallData is returned if failed to fetch heimdall data
+	errFetchHeimdallData = errors.New("failed to fetch heimdall data")
 )
 
 // SignerFn is a signer callback function to request a header to be signed by a
@@ -890,6 +896,7 @@ func (c *Bor) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 
 // Close implements consensus.Engine. It's a noop for bor as there are no background threads.
 func (c *Bor) Close() error {
+	c.HeimdallClient.Close()
 	return nil
 }
 
@@ -1137,6 +1144,9 @@ func (c *Bor) CommitStates(
 		"fromID", lastStateID+1,
 		"to", to.Format(time.RFC3339))
 	eventRecords, err := c.HeimdallClient.FetchStateSyncEvents(lastStateID+1, to.Unix())
+	if err != nil {
+		return nil, err
+	}
 	if c.config.OverrideStateSyncRecords != nil {
 		if val, ok := c.config.OverrideStateSyncRecords[strconv.FormatUint(number, 10)]; ok {
 			eventRecords = eventRecords[0:val]

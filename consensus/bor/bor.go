@@ -45,6 +45,8 @@ const (
 	checkpointInterval = 1024 // Number of blocks after which to save the vote snapshot to the database
 	inmemorySnapshots  = 128  // Number of recent vote snapshots to keep in memory
 	inmemorySignatures = 4096 // Number of recent block signatures to keep in memory
+
+	allowFutureBlockTimeSeconds = int64(3) // Max seconds from current time to allow for blocks before they are considered as future blocks
 )
 
 // Bor protocol constants.
@@ -270,6 +272,13 @@ func New(
 		WithoutHeimdall:        withoutHeimdall,
 	}
 
+	// make sure we can decode all the GenesisAlloc in the BorConfig.
+	for key, genesisAlloc := range c.config.BlockAlloc {
+		if _, err := decodeGenesisAlloc(genesisAlloc); err != nil {
+			panic(fmt.Sprintf("BUG: Block alloc '%s' in genesis is not correct: %v", key, err))
+		}
+	}
+
 	return c
 }
 
@@ -316,7 +325,7 @@ func (c *Bor) verifyHeader(chain consensus.ChainHeaderReader, header *types.Head
 	number := header.Number.Uint64()
 
 	// Don't waste time checking blocks from the future
-	if header.Time > uint64(time.Now().Unix()) {
+	if header.Time > uint64(time.Now().Unix()+allowFutureBlockTimeSeconds) {
 		return consensus.ErrFutureBlock
 	}
 
@@ -678,6 +687,11 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 		}
 	}
 
+	if err = c.changeContractCodeIfNeeded(headerNumber, state); err != nil {
+		log.Error("Error changing contract code", "error", err)
+		return
+	}
+
 	// No block rewards in PoA, so the state remains as is and uncles are dropped
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 	header.UncleHash = types.CalcUncleHash(nil)
@@ -685,6 +699,34 @@ func (c *Bor) Finalize(chain consensus.ChainHeaderReader, header *types.Header, 
 	// Set state sync data to blockchain
 	bc := chain.(*core.BlockChain)
 	bc.SetStateSync(stateSyncData)
+}
+
+func decodeGenesisAlloc(i interface{}) (core.GenesisAlloc, error) {
+	var alloc core.GenesisAlloc
+	b, err := json.Marshal(i)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, &alloc); err != nil {
+		return nil, err
+	}
+	return alloc, nil
+}
+
+func (c *Bor) changeContractCodeIfNeeded(headerNumber uint64, state *state.StateDB) error {
+	for blockNumber, genesisAlloc := range c.config.BlockAlloc {
+		if blockNumber == strconv.FormatUint(headerNumber, 10) {
+			allocs, err := decodeGenesisAlloc(genesisAlloc)
+			if err != nil {
+				return fmt.Errorf("failed to decode genesis alloc: %v", err)
+			}
+			for addr, account := range allocs {
+				log.Info("change contract code", "address", addr)
+				state.SetCode(addr, account.Code)
+			}
+		}
+	}
+	return nil
 }
 
 // FinalizeAndAssemble implements consensus.Engine, ensuring no uncles are set,
@@ -711,6 +753,11 @@ func (c *Bor) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *typ
 				return nil, err
 			}
 		}
+	}
+
+	if err := c.changeContractCodeIfNeeded(headerNumber, state); err != nil {
+		log.Error("Error changing contract code", "error", err)
+		return nil, err
 	}
 
 	// No block rewards in PoA, so the state remains as is and uncles are dropped

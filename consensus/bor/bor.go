@@ -836,7 +836,17 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 		case <-stop:
 			log.Debug("Discarding sealing operation for block", "number", number)
 			return
+
 		case <-time.After(delay):
+		priority:
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					break priority
+				}
+			}
 			if wiggle > 0 {
 				log.Info(
 					"Sealing out-of-turn",

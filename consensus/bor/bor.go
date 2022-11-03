@@ -834,7 +834,7 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 	go func() {
 		select {
 		case <-stop:
-			log.Debug("Discarding sealing operation for block", "number", number)
+			log.Info("Discarding sealing operation for block", "number", number)
 			return
 
 		case <-time.After(delay):
@@ -842,6 +842,7 @@ func (c *Bor) Seal(chain consensus.ChainHeaderReader, block *types.Block, result
 			for {
 				select {
 				case <-stop:
+					log.Info("Discarding sealing operation for block", "number", number)
 					return
 				default:
 					break priority

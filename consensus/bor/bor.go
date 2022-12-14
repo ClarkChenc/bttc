@@ -645,7 +645,7 @@ func (c *Bor) Prepare(chain consensus.ChainHeaderReader, header *types.Header) e
 
 	var succession int
 	// if signer is not empty
-	if bytes.Compare(c.signer.Bytes(), common.Address{}.Bytes()) != 0 {
+	if !bytes.Equal(c.signer.Bytes(), common.Address{}.Bytes()) {
 		succession, err = snap.GetSignerSuccessionNumber(c.signer)
 		if err != nil {
 			return err
@@ -1136,7 +1136,7 @@ func (c *Bor) CommitStates(
 		"Fetching state updates from Heimdall",
 		"fromID", lastStateID+1,
 		"to", to.Format(time.RFC3339))
-	eventRecords, err := c.HeimdallClient.FetchStateSyncEvents(lastStateID+1, to.Unix())
+	eventRecords, _ := c.HeimdallClient.FetchStateSyncEvents(lastStateID+1, to.Unix())
 	if c.config.OverrideStateSyncRecords != nil {
 		if val, ok := c.config.OverrideStateSyncRecords[strconv.FormatUint(number, 10)]; ok {
 			eventRecords = eventRecords[0:val]
@@ -1305,7 +1305,7 @@ func applyMessage(
 
 func validatorContains(a []*Validator, x *Validator) (*Validator, bool) {
 	for _, n := range a {
-		if bytes.Compare(n.Address.Bytes(), x.Address.Bytes()) == 0 {
+		if bytes.Equal(n.Address.Bytes(), x.Address.Bytes()) {
 			return n, true
 		}
 	}

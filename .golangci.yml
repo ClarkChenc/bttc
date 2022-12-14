@@ -8,21 +8,18 @@ run:
   skip-dirs-use-default: true
   skip-files:
     - core/genesis_alloc.go
+    - _test.go
 
 linters:
   disable-all: true
   enable:
-    - deadcode
     - goconst
     - goimports
     - gosimple
     - govet
     - ineffassign
     - misspell
-    # - staticcheck
     - unconvert
-    # - unused
-    - varcheck
 
 linters-settings:
   gofmt:

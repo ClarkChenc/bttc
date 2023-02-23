@@ -803,6 +803,20 @@ func (s *PublicBlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.H
 	return nil
 }
 
+// getAuthor: returns the author of the Block
+func (s *PublicBlockChainAPI) getAuthor(head *types.Header) *common.Address {
+	// get author using Author() function from: /consensus/clique/clique.go
+	// In Production: get author using Author() function from: /consensus/bor/bor.go
+	author, err := s.b.Engine().Author(head)
+	// make sure we don't send error to the user, return 0x0 instead
+	if err != nil {
+		add := common.HexToAddress("0x0000000000000000000000000000000000000000")
+		return &add
+	}
+	// change the coinbase (0x0) with the miner address
+	return &author
+}
+
 // GetBlockByNumber returns the requested canonical block.
 // * When blockNr is -1 the chain head is returned.
 // * When blockNr is -2 the pending chain head is returned.
@@ -817,6 +831,12 @@ func (s *PublicBlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.B
 			for _, field := range []string{"hash", "nonce", "miner"} {
 				response[field] = nil
 			}
+		}
+
+		if err == nil && number != rpc.PendingBlockNumber {
+			author := s.getAuthor(block.Header())
+
+			response["miner"] = author
 		}
 
 		// append marshalled bor transaction
@@ -837,6 +857,9 @@ func (s *PublicBlockChainAPI) GetBlockByHash(ctx context.Context, hash common.Ha
 		response, err := s.rpcMarshalBlock(ctx, block, true, fullTx)
 		// append marshalled bor transaction
 		if err == nil && response != nil {
+			author := s.getAuthor(block.Header())
+			response["miner"] = author
+
 			return s.appendRPCMarshalBorTransaction(ctx, block, response, fullTx), err
 		}
 		return response, err

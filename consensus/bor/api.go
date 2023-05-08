@@ -19,7 +19,7 @@ import (
 
 var (
 	// MaxCheckpointLength is the maximum number of blocks that can be requested for constructing a checkpoint root hash
-	MaxCheckpointLength = uint64(math.Pow(2, 15))
+	MaxCheckpointLength = uint64(math.Pow(2, 16))
 )
 
 // API is a user facing RPC API to allow controlling the signer and voting
